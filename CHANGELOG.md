@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.0.0] - 20-03-2026
+
 ### Added
 - **Uploader Attribution**: Added `uploaderDid` support across the controller and service layers.
 - **Automated Record Management**: The `notarizeUpload` controller now automatically triggers the indexing in `IdentityService` upon successful blockchain execution.
