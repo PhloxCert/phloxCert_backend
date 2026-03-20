@@ -5,6 +5,10 @@ import path from 'path';
 
 export interface NotarizationRecord {
     objectId: string;
+    status: 'pending' | 'certified' | 'rejected'; 
+    vcJwt?: string;                                
+    certifiedBy?: string;                          
+    certifiedAt?: string;  
     metadata: {
         name: string;
         fileName: string;
@@ -68,6 +72,7 @@ export class IdentityService {
     static saveRecord(objectId: string, metadata: NotarizationRecord['metadata']) {
         const record: NotarizationRecord = {
             objectId,
+            status: 'pending',
             metadata,
             createdAt: new Date().toISOString(),
         };
@@ -97,5 +102,54 @@ export class IdentityService {
     static getRecords(did: string): NotarizationRecord[] {
         const db = this.readDb();
         return db[did] ?? [];
+    }
+    // Aggiorna status e VC di un record esistente
+    static certifyRecord(objectId: string, technicianDid: string, vcJwt: string) {
+        const db = this.readDb();
+        
+        // Aggiorna in tutti gli indici dove compare questo objectId
+        for (const key of Object.keys(db)) {
+            db[key] = db[key].map(r => {
+                if (r.objectId === objectId) {
+                    return {
+                        ...r,
+                        status: 'certified',
+                        vcJwt,
+                        certifiedBy: technicianDid,
+                        certifiedAt: new Date().toISOString()
+                    };
+                }
+                return r;
+            });
+        }
+        
+        this.writeDb(db);
+        }
+
+    // Recupera tutti i record pending (per la dashboard technician)
+    static getPendingRecords(): NotarizationRecord[] {
+        const db = this.readDb();
+        const seen = new Set<string>();
+        const pending: NotarizationRecord[] = [];
+        
+        for (const records of Object.values(db)) {
+            for (const r of records) {
+                if (r.status === 'pending' && !seen.has(r.objectId)) {
+                    seen.add(r.objectId);
+                    pending.push(r);
+                }
+            }
+        }
+        return pending;
+    }
+
+    // Recupera un singolo record per objectId
+    static getRecordById(objectId: string): NotarizationRecord | null {
+        const db = this.readDb();
+        for (const records of Object.values(db)) {
+            const found = records.find(r => r.objectId === objectId);
+            if (found) return found;
+        }
+        return null;
     }
 }
