@@ -7,6 +7,7 @@ import { IotaClient, getFullnodeUrl } from '@iota/iota-sdk/client';
 import { verifyPersonalMessageSignature } from '@iota/iota-sdk/verify';
 import { Transaction } from '@iota/iota-sdk/transactions';
 import apiRoutes from './routes/api.routes.js';
+import { BcsReader } from '@iota/bcs';
 
 // Load configuration from .env (not committed to source control)
 dotenv.config();
@@ -36,6 +37,7 @@ const nonceStorage = new Map<string, string>();
 // --- ENDPOINT 1: Genera la sfida (Nonce) ---
 app.post('/auth/nonce', (req: Request, res: Response) => {
     const { address } = req.body;
+    console.log(`Nonce generated for`);
     if (!address) return res.status(400).json({ error: "Address missing" });
 
     // Generate a random string that the user must sign
@@ -48,17 +50,21 @@ app.post('/auth/nonce', (req: Request, res: Response) => {
     res.json({ nonce });
 });
 
+function readMoveString(reader: BcsReader): string {
+    // Move usa ULEB128 per la lunghezza, ma per stringhe corte read8() o readULEB() funzionano
+    const length = reader.readULEB(); 
+    const bytes = reader.readBytes(length);
+    return new TextDecoder().decode(bytes);
+}
+
 async function getContractUser(userAddress: string) {
     try {
         const txb = new Transaction();
-
-        // 1. Objects (like the Registry) must be passed as 'object'
-        // 2. Simple values or vectors must be passed as 'pure'
         txb.moveCall({
-            target: `${PACKAGE_ID}::LocalRegistry::get_user`,
+            target: `${PACKAGE_ID}::LocalRegistry::get_user_data`, 
             arguments: [
-                txb.object(REGISTRY_ID), // Correct: objects use .object()
-                txb.pure.string(userAddress), // Correct: shortcut for the address
+                txb.object(REGISTRY_ID),
+                txb.pure.address(userAddress),
             ],
         });
 
@@ -69,60 +75,90 @@ async function getContractUser(userAddress: string) {
 
         if (result.results?.[0]?.returnValues?.[0]) {
             const bytes = Uint8Array.from(result.results[0].returnValues[0][0]);
+            const reader = new BcsReader(bytes);
 
-            // The first byte indicates if the Option is Some (1) or None (0)
-            const isRegistered = bytes[0] === 1;
+            // 1. Leggi il RUOLO (u8)
+            const role = reader.read8();
 
-            if (isRegistered) {
-                // If registered, the next byte is the 'role' (u8)
-                const role = bytes[1];
-                // The subsequent bytes are the 'name' (vector<u8> with length prefix)
-                console.log(`User found! Role: ${role}`);
-                return { registered: true, role: role };
+            // 2. Leggi il NOME (String)
+            const name = readMoveString(reader);
+
+            let business_info = null;
+            let technician_info = null;
+
+            // 3. Leggi business_info (Option<BusinessData>)
+            // In Move BCS, Option è: [1 byte flag] + [dati se flag == 1]
+            const hasBusiness = reader.read8() === 1;
+            if (hasBusiness) {
+                business_info = {
+                    address: readMoveString(reader),
+                    vat_number: readMoveString(reader),
+                };
             }
+
+            // 4. Leggi technician_info (Option<TechnicianData>)
+            const hasTechnician = reader.read8() === 1;
+            if (hasTechnician) {
+                technician_info = {
+                    license_number: readMoveString(reader),
+                    specialization: readMoveString(reader),
+                };
+            }
+
+            console.log(`Dati estratti per ${name}:`, { role, business_info, technician_info });
+
+            return { 
+                registered: true, 
+                role,
+                name,
+                business_info,
+                technician_info
+            };
         }
 
-        console.log("User not found.");
-        return { registered: false };
+        return { registered: false, role: 0 };
     } catch (e) {
-        console.error("Error reading contract:", e);
-        return { registered: false, role: null };
+        console.error("Errore lettura blockchain:", e);
+        return { registered: false, role: 0 };
     }
 }
 
-// --- ENDPOINT 2: Verifica la firma ---
+
 app.post('/auth/verify', async (req: Request, res: Response) => {
     const { address, signature } = req.body;
     const savedNonce = nonceStorage.get(address);
 
-    if (!savedNonce) return res.status(400).json({ error: "Nonce expired" });
+    if (!savedNonce) return res.status(400).json({ error: "Nonce expired or invalid" });
 
     try {
         const messageBytes = new TextEncoder().encode(savedNonce);
+        
         const publicKey = await verifyPersonalMessageSignature(messageBytes, signature);
         const recoveredAddress = publicKey.toIotaAddress();
 
-        if (recoveredAddress === address) {
-            nonceStorage.delete(address);
-
-            // --- NEW LOGIC: Blockchain Check ---
-            const contractData = await getContractUser(address);
-
-            console.log(`User ${address} - Registered: ${contractData.registered}`);
-
-            return res.json({
-                success: true,
-                registered: contractData.registered,
-                role: contractData.role,
-                address: address,
-                message: contractData.registered ? "Welcome back!" : "User not registered in the system",
-                // If not registered, the frontend will know to show the registration form
-            });
-        } else {
-            return res.status(401).json({ error: "Signature does not match" });
+        if (recoveredAddress !== address) {
+            return res.status(401).json({ error: "Signature mismatch" });
         }
+
+        nonceStorage.delete(address);
+
+        const contractData = await getContractUser(address);
+
+        return res.json({
+            success: true,
+            registered: contractData.registered,
+            role: contractData.role,
+            name: contractData.name || "Utente IOTA",
+            address: address,
+            // Passa gli oggetti info solo se esistono
+            business_info: contractData.business_info || null, 
+            technician_info: contractData.technician_info || null,
+            message: "Login successful"
+        });
+
     } catch (error) {
-        return res.status(401).json({ error: "Invalid signature" });
+        console.error("Verify Error:", error);
+        return res.status(401).json({ error: "Invalid signature format" });
     }
 });
 

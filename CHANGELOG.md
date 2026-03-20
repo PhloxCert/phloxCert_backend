@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **SHA256 Integrity Verification**: Implementation of `HashUtil` for consistent file hashing before on-chain notarization.
 - **Wallet authentication flow (Nonce/Verify)**.
 - **Basic IOTA SDK integration**.
+- Added POST /api/documents/:objectId/certify endpoint with cryptographic wallet signature verification via verifyPersonalMessageSignature, enabling technicians to issue Verifiable Credentials signed from their IOTA wallet
+- Added GET /api/documents/all endpoint and getAllRecords() method to IdentityService to retrieve all notarization records
 
 ### Changed
 - **Notarization Service Refactor**: Streamlined the `createOnChainNotarization` flow to handle metadata construction and on-chain hashing in a single service call.
