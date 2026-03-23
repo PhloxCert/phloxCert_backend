@@ -12,16 +12,12 @@
   "author": "",
   "license": "ISC",
   "type": "module",
-  "devDependencies": {
+  "dependencies": {
+    "@types/node": "^25.3.5",
     "@types/express": "^5.0.6",
     "@types/multer": "^2.1.0",
-    "@types/node": "^25.3.5",
-    "ts-node": "^10.9.2",
-    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.9.3",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
-  },
-  "dependencies": {
     "@iota/identity-wasm": "^1.9.2-beta.1",
     "@iota/iota-sdk": "^1.0.0",
     "@iota/notarization": "^0.1.10",
@@ -31,5 +27,9 @@
     "dotenv": "^16.3.1",
     "express": "^5.2.1",
     "multer": "^1.4.5-lts.1"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0"
   }
 }
