@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "npm install --include=dev && tsc",
-    "start": "tsx src/server.js",
+    "start": "tsx src/server.ts",
     "dev": "tsx --watch src/server.ts"
   },
   "keywords": [],
