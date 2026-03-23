@@ -24,7 +24,14 @@ if (!PACKAGE_ID || !REGISTRY_ID) {
 const app = express();
 
 // Configure CORS to allow your frontend (e.g. localhost:5173) to call the server
-app.use(cors());
+app.use(cors({
+  origin: [
+    'https://phloxcert-frontend.pages.dev',
+    'http://localhost:5173'  // per sviluppo locale
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
