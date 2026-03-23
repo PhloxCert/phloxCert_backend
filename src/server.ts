@@ -17,6 +17,8 @@ const REGISTRY_ID = process.env.REGISTRY_ID;
 const IOTA_NODE_URL = process.env.IOTA_NODE_URL ?? getFullnodeUrl('localnet');
 const PORT = Number(process.env.PORT ?? 8080);
 
+const BASE_URL = process.env.BASE_URL ?? 'http://localhost:8080';
+
 if (!PACKAGE_ID || !REGISTRY_ID) {
     throw new Error('Missing PACKAGE_ID or REGISTRY_ID in environment. Please set them in .env (see .env.example).');
 }
@@ -201,5 +203,5 @@ app.get('/api/objects/:address', async (req: Request, res: Response) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`TypeScript backend active on http://localhost:${PORT}`);
+    console.log(`TypeScript backend active on ${BASE_URL}:${PORT}`);
 });
