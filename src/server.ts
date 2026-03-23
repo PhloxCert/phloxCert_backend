@@ -30,14 +30,15 @@ app.options('*', (req, res) => {
   res.status(204).end();
 });
 
-// Configure CORS to allow your frontend (e.g. localhost:5173) to call the server
 app.use(cors({
   origin: [
     'https://phloxcert-frontend.pages.dev',
-    'http://localhost:5173'  // per sviluppo locale
+    'http://localhost:5173'
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
 app.use(express.json());
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
