@@ -63,7 +63,7 @@ async function getContractUser(userAddress: string) {
         txb.moveCall({
             target: `${PACKAGE_ID}::LocalRegistry::get_user_data`, 
             arguments: [
-                txb.object(REGISTRY_ID),
+                txb.object(REGISTRY_ID!),
                 txb.pure.address(userAddress),
             ],
         });

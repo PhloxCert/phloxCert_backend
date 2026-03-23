@@ -109,7 +109,9 @@ export class IdentityService {
         
         // Aggiorna in tutti gli indici dove compare questo objectId
         for (const key of Object.keys(db)) {
-            db[key] = db[key].map(r => {
+            const arr = db[key];
+            if (!Array.isArray(arr)) continue;  // skip se non è un array
+            db[key] = arr.map(r => {
                 if (r.objectId === objectId) {
                     return {
                         ...r,
