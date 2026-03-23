@@ -1,4 +1,4 @@
 name = "phloxcert-backend"
 main = "src/server.js"
-compatibility_date = "2025-03-01"
+compatibility_date = "2026-03-23"
 compatibility_flags = ["nodejs_compat"]
