@@ -30,6 +30,7 @@ Then edit `.env` and set:
 - `REGISTRY_ID` → deployed registry object ID
 - `NOTARIZATION_PACKAGE_ID` → deployed notarization-move package ID
 - `PRIVATE_KEY` → A valid Ed25519 secret key for the server to spawn and sign Notarization transactions.
+- `PINATA_JWT` → Pinata JWT for IPFS file uploads (Alternatively, set `PINATA_API_KEY` and `PINATA_SECRET_API_KEY`).
 
 ### 3) Run
 ```bash
@@ -73,6 +74,13 @@ The backend requires a funded IOTA address to pay for notarization gas fees.
 1. Generate an address: `iota client new-address ed25519`
 2. Get the secret key: `iota client keytool <YOUR_ADDR>`
 3. The format should be a string starting with `iotaprivkey1...`
+
+### Pinata IPFS Setup
+The backend uses Pinata to pin uploaded files to the permanent IPFS network.
+1. Create a free account at [Pinata](https://app.pinata.cloud/).
+2. Go to the API Keys section and create a new key (or get a JWT).
+3. Copy the **JWT** token and use it as `PINATA_JWT` in your `.env` file. (Alternatively use `PINATA_API_KEY` and `PINATA_SECRET_API_KEY`).
+4. (Optional) Provide your dedicated gateway URL in `PINATA_GATEWAY_URL` (e.g., `https://my-gateway.mypinata.cloud`) to ensure reliable file resolution. If omitted, the public `gateway.pinata.cloud` is used.
 
 ### Dual-Identity Indexing
 The backend uses a JSON-based indexing system (located in `.data/`) that mirrors the on-chain state for fast querying. This index is automatically updated whenever a notarization is created, ensuring that the History view is always perfectly synced with both the uploader's and the subject's activity.
