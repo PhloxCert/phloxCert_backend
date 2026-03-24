@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.0.1] - 24-03-2026
+
+### Added
+- **IPFS Pinata Storage**: Integrated Axios to pin uploaded files securely to the permanent IPFS network via Pinata.
+- **Dedicated Gateway Support**: Added `PINATA_GATEWAY_URL`, `PINATA_API_KEY` and `PINATA_SECRET_API_KEY`, `PINATA_JWT` environment variables for reliable custom HTTP IPFS gateway resolution.
+
+### Changed
+- **Storage Service Refactor**: Deprecated the local file-system `uploads/` directory in favor of decentralized immutable IPFS storage.
+
 ## [1.0.0] - 20-03-2026
 
 ### Added
