@@ -82,7 +82,7 @@ export class NotarizationService {
 
         const offchainUrl = await StorageService.storeFile(fileBuffer, fileName);
 
-        // 1. Il metadata ON-CHAIN rimane completo (contiene issuedBy per audit)
+        // 1. The ON-CHAIN metadata remains complete (contains issuedBy for audit)
         const metadataString = JSON.stringify({
             name: metadata.fileName,
             activityDid: metadata.activityDid,
@@ -140,11 +140,11 @@ export class NotarizationService {
         if (!fields) return null;
 
         try {
-            // La description è dentro immutable_metadata
+            // Description is inside immutable_metadata
             const immutableMetadata = fields.immutable_metadata?.fields;
             const descriptionRaw = immutableMetadata?.description;
 
-            // description è Option<String>: può essere null o { fields: { vec: [...] } }
+            // Description is Option<String>: can be null or { fields: { vec: [...] } }
             const descriptionString =
                 typeof descriptionRaw === 'string'
                     ? descriptionRaw
@@ -190,6 +190,23 @@ export class NotarizationService {
         metadata: any
     ): Promise<{ txBytes: string, metadataString: string, offchainUrl: string }> {
 
+        // --- BACKEND VALIDATION ---
+        // Verify that activityDid is a registered Business (Role 1)
+        const cleanActAddress = metadata.activityDid.includes(':') 
+            ? metadata.activityDid.split(':').pop() 
+            : metadata.activityDid;
+        
+        const businessProfile = await IdentityService.getContractUser(cleanActAddress!);
+        
+        if (!businessProfile.registered) {
+            throw new Error(`The Activity DID '${metadata.activityDid}' is not registered on-chain.`);
+        }
+        
+        if (businessProfile.role === 2) {
+            throw new Error(`Cannot notarize documents for a Technician identity. '${metadata.activityDid}' corresponds to an Authorized Technician.`);
+        }
+        // --------------------------
+
         const fileHashHex = HashUtil.sha256(fileBuffer);
         const fileHashUint8 = Array.from(Buffer.from(fileHashHex, 'hex'));
         const offchainUrl = await StorageService.storeFile(fileBuffer, fileName);
@@ -215,12 +232,12 @@ export class NotarizationService {
         const tx = new Transaction();
         tx.setSender(metadata.technicianAddress);
 
-        // 1. Costruisci lo State<vector<u8>> chiamando new_state_from_bytes
+        // 1. Build the State<vector<u8>> by calling new_state_from_bytes
         const [state] = tx.moveCall({
             target: `${packageId}::notarization::new_state_from_bytes`,
             arguments: [
                 tx.pure.vector('u8', fileHashUint8),
-                // metadata opzionale dello state: Option<String> = none
+                // Optional state metadata: Option<String> = none
                 tx.moveCall({
                     target: '0x1::option::none',
                     typeArguments: ['0x1::string::String'],
@@ -229,7 +246,7 @@ export class NotarizationService {
             ],
         });
 
-        // 2. Costruisci il TimeLock con unlock_at
+        // 2. Build the TimeLock with unlock_at
         const [timeLock] = tx.moveCall({
             target: `${packageId}::timelock::unlock_at`,
             arguments: [
@@ -238,13 +255,13 @@ export class NotarizationService {
             ],
         });
 
-        // 3. Chiama locked_notarization::create
+        // 3. Call locked_notarization::create
         tx.moveCall({
             target: `${packageId}::locked_notarization::create`,
             typeArguments: ['vector<u8>'],
             arguments: [
                 state,
-                // description: Option<String> con il metadataString
+                // description: Option<String> with metadataString
                 tx.moveCall({
                     target: '0x1::option::some',
                     typeArguments: ['0x1::string::String'],

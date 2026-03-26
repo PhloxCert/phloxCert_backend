@@ -33,7 +33,7 @@ export class NotarizationController {
                 }
             );
 
-            // Restituiamo i bytes al frontend
+            // Return the bytes to the frontend
             res.status(200).json(result);
         } catch (error: any) {
             res.status(500).json({ error: error.message });
@@ -42,7 +42,7 @@ export class NotarizationController {
 
     async getRecordsByDid(req: Request, res: Response) {
         try {
-            const did = req.params.did;
+            const did = req.params.did as string;
             
             const ids = await IdentityService.getObjectIdsByDid(did);
 
@@ -59,7 +59,7 @@ export class NotarizationController {
     }
 
     /**
-     * Verifica l'integrità di un file rispetto a un objectId on-chain.
+     * Verifies the integrity of a file against an on-chain objectId.
      */
     async verifyDocument(req: Request, res: Response) {
         try {
@@ -83,7 +83,7 @@ export class NotarizationController {
             }
 
             const fields = (response.data.content as any).fields;
-            // Estrazione hash dal campo 'value' o 'state' (dipende dal tuo Move contract)
+            // Extract hash from the 'value' or 'state' field (depends on your Move contract)
             const storedData = fields.value || fields.state?.fields?.data;
             
             if (!storedData) {

@@ -6,8 +6,9 @@ import * as dotenv from 'dotenv';
 import { IotaClient, getFullnodeUrl } from '@iota/iota-sdk/client';
 import { verifyPersonalMessageSignature } from '@iota/iota-sdk/verify';
 import { Transaction } from '@iota/iota-sdk/transactions';
+import { IdentityService } from './services/identity.service.js';
 import apiRoutes from './routes/api.routes.js';
-import { BcsReader } from '@iota/bcs';
+
 
 // Load configuration from .env (not committed to source control)
 dotenv.config();
@@ -44,7 +45,7 @@ app.use('/api', apiRoutes);
 const client = new IotaClient({ url: IOTA_NODE_URL });
 const nonceStorage = new Map<string, string>();
 
-// --- ENDPOINT 1: Genera la sfida (Nonce) ---
+// --- ENDPOINT 1: Generate Authentication Challenge (Nonce) ---
 app.post('/auth/nonce', (req: Request, res: Response) => {
     const { address } = req.body;
     console.log(`Nonce generated for`);
@@ -60,90 +61,19 @@ app.post('/auth/nonce', (req: Request, res: Response) => {
     res.json({ nonce });
 });
 
-function readMoveString(reader: BcsReader): string {
-    // Move usa ULEB128 per la lunghezza, ma per stringhe corte read8() o readULEB() funzionano
-    const length = reader.readULEB(); 
-    const bytes = reader.readBytes(length);
-    return new TextDecoder().decode(bytes);
-}
-
-async function getContractUser(userAddress: string) {
-    try {
-        const txb = new Transaction();
-        txb.moveCall({
-            target: `${PACKAGE_ID}::LocalRegistry::get_user_data`, 
-            arguments: [
-                txb.object(REGISTRY_ID!),
-                txb.pure.address(userAddress),
-            ],
-        });
-
-        const result = await client.devInspectTransactionBlock({
-            sender: userAddress,
-            transactionBlock: txb,
-        });
-
-        if (result.results?.[0]?.returnValues?.[0]) {
-            const bytes = Uint8Array.from(result.results[0].returnValues[0][0]);
-            const reader = new BcsReader(bytes);
-
-            // 1. Leggi il RUOLO (u8)
-            const role = reader.read8();
-
-            // 2. Leggi il NOME (String)
-            const name = readMoveString(reader);
-
-            let business_info = null;
-            let technician_info = null;
-
-            // 3. Leggi business_info (Option<BusinessData>)
-            // In Move BCS, Option è: [1 byte flag] + [dati se flag == 1]
-            const hasBusiness = reader.read8() === 1;
-            if (hasBusiness) {
-                business_info = {
-                    address: readMoveString(reader),
-                    vat_number: readMoveString(reader),
-                };
-            }
-
-            // 4. Leggi technician_info (Option<TechnicianData>)
-            const hasTechnician = reader.read8() === 1;
-            if (hasTechnician) {
-                technician_info = {
-                    license_number: readMoveString(reader),
-                    specialization: readMoveString(reader),
-                };
-            }
-
-            console.log(`Dati estratti per ${name}:`, { role, business_info, technician_info });
-
-            return { 
-                registered: true, 
-                role,
-                name,
-                business_info,
-                technician_info
-            };
-        }
-
-        return { registered: false, role: 0 };
-    } catch (e) {
-        console.error("Errore lettura blockchain:", e);
-        return { registered: false, role: 0 };
-    }
-}
-
 app.get('/api/v1/business/profile/:did', async (req: Request, res: Response) => {
     try {
         const { did } = req.params;
+        const didStr = Array.isArray(did) ? did[0] : did;
+        const cleanAddress = didStr.includes(':') ? didStr.split(':').pop() : didStr;
 
-        const contractData = await getContractUser(did);
+        const contractData = await IdentityService.getContractUser(cleanAddress!);
 
         if (!contractData.registered) {
             return res.status(404).json({ error: "User not registered on-chain" });
         }
 
-        // 3. Ritorna il profilo unificato
+        // 3. Return the unified profile
         return res.json({
             success: true,
             venue: {
@@ -185,15 +115,15 @@ app.post('/auth/verify', async (req: Request, res: Response) => {
 
         nonceStorage.delete(address);
 
-        const contractData = await getContractUser(address);
+        const contractData = await IdentityService.getContractUser(address);
 
         return res.json({
             success: true,
             registered: contractData.registered,
             role: contractData.role,
-            name: contractData.name || "Utente IOTA",
+            name: contractData.name || "IOTA User",
             address: address,
-            // Passa gli oggetti info solo se esistono
+            // Pass info objects only if they exist
             business_info: contractData.business_info || null, 
             technician_info: contractData.technician_info || null,
             message: "Login successful"

@@ -1,7 +1,10 @@
 import { Resolver, CoreDocument } from '@iota/identity-wasm/node';
 import { IotaClient } from '@iota/iota-sdk/client';
+import { BcsReader } from '@iota/bcs';
 import { StorageService } from './storage.service.js';
-import { NotarizationService } from './notarization.service.js';
+import { IotaService } from './iota.service.js';
+import { Transaction } from '@iota/iota-sdk/transactions';
+import type { NotarizationService } from './notarization.service.js';
 
 export interface NotarizationRecord {
     objectId: string;
@@ -19,8 +22,85 @@ export interface NotarizationRecord {
 
 export class IdentityService {
     private resolver: Resolver<CoreDocument> | null = null;
+    
+    private static PACKAGE_ID = process.env.PACKAGE_ID;
+    private static REGISTRY_ID = process.env.REGISTRY_ID;
 
     constructor(private client: IotaClient) {}
+
+    private static readMoveString(reader: BcsReader): string {
+        const length = reader.readULEB();
+        const bytes = reader.readBytes(length);
+        return new TextDecoder().decode(bytes);
+    }
+
+    /**
+     * Retrieves user data directly from the blockchain (LocalRegistry).
+     */
+    static async getContractUser(userAddress: string) {
+        try {
+            if (!this.PACKAGE_ID || !this.REGISTRY_ID) {
+                throw new Error("Missing PACKAGE_ID or REGISTRY_ID in environment");
+            }
+
+            const client = IotaService.getClient();
+            const txb = new Transaction();
+            txb.moveCall({
+                target: `${this.PACKAGE_ID}::LocalRegistry::get_user_data`,
+                arguments: [
+                    txb.object(this.REGISTRY_ID!),
+                    txb.pure.address(userAddress),
+                ],
+            });
+
+            const result = await client.devInspectTransactionBlock({
+                sender: userAddress,
+                transactionBlock: txb,
+            });
+
+            if (result.results?.[0]?.returnValues?.[0]) {
+                const bytes = Uint8Array.from(result.results[0].returnValues[0][0]);
+                const reader = new BcsReader(bytes);
+
+                const role = reader.read8();
+                const name = this.readMoveString(reader);
+
+                let business_info = null;
+                let technician_info = null;
+
+                // Index 1: Business data (Option<BusinessData>)
+                const hasBusiness = reader.read8() === 1;
+                if (hasBusiness) {
+                    business_info = {
+                        address: this.readMoveString(reader),
+                        vat_number: this.readMoveString(reader),
+                    };
+                }
+
+                // Index 2: Technician data (Option<TechnicianData>)
+                const hasTechnician = reader.read8() === 1;
+                if (hasTechnician) {
+                    technician_info = {
+                        license_number: this.readMoveString(reader),
+                        specialization: this.readMoveString(reader),
+                    };
+                }
+
+                return {
+                    registered: true,
+                    role,
+                    name,
+                    business_info,
+                    technician_info
+                };
+            }
+
+            return { registered: false, role: 0 };
+        } catch (e) {
+            console.error("[IdentityService] Blockchain lookup error:", e);
+            return { registered: false, role: 0 };
+        }
+    }
 
     /**
      * Lazy-initializes the DID Resolver.
@@ -97,7 +177,7 @@ export class IdentityService {
         );
 
         // Filter out any objects that might have been deleted or failed to fetch
-        return results.filter(r => r !== null);
+        return results.filter((r: any) => r !== null);
     }
 
     static async certifyRecord(
@@ -107,7 +187,7 @@ export class IdentityService {
     ): Promise<void> {
         const db = await this.getRemoteDb() as any;
         if (!db._vcMap) db._vcMap = {};
-        db._vcMap[objectId] = vcObjectId;  // ← solo la stringa, nient'altro
+        db._vcMap[objectId] = vcObjectId;  // ← only the string, nothing else
         await StorageService.storeRegistry(db);
         console.log(`[IdentityService] Linked ${vcObjectId} → ${objectId} on Pinata registry.`);
     }

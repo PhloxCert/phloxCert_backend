@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Centralized Identity Service**: Refactored blockchain lookup and role validation logic into `IdentityService`.
+- **Finalize Notarization Route**: Added `POST /v1/identity/save-id` endpoint to handle the final stage of the notarization workflow.
+- **DID-Certificate Mapping**: Implemented a new logic to create and pin a JSON metadata file on IPFS (via Pinata) that links a venue's `did` directly to its specific certificates.
+- **Persistence Layer**: Enabled the controller to bridge local identity data with decentralized storage, ensuring certificates are correctly attributed to the venue's decentralized identifier.
+
+### Changed
+- **Localization**: Translated all Italian comments and log messages to English across the entire source code (`src/`).
+- **Security Validation**: Enhanced `NotarizationService` to strictly enforce that only Business DIDs can have documents notarized, preventing technicians from notarizing for themselves or not existing DIDs.
+- **Workflow Optimization**: Refactored the finalization process to ensure that once a certificate is notarized, the association between the Venue DID and the IPFS CID is permanently stored.
+
 ## [1.0.1] - 24-03-2026
 
 ### Added
@@ -26,13 +37,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Basic IOTA SDK integration**.
 - Added POST /api/documents/:objectId/certify endpoint with cryptographic wallet signature verification via verifyPersonalMessageSignature, enabling technicians to issue Verifiable Credentials signed from their IOTA wallet
 - Added GET /api/documents/all endpoint and getAllRecords() method to IdentityService to retrieve all notarization records
-- **Finalize Notarization Route**: Added `POST /v1/identity/save-id` endpoint to handle the final stage of the notarization workflow.
-- **DID-Certificate Mapping**: Implemented a new logic to create and pin a JSON metadata file on IPFS (via Pinata) that links a venue's `did` directly to its specific certificates.
-- **Persistence Layer**: Enabled the controller to bridge local identity data with decentralized storage, ensuring certificates are correctly attributed to the venue's decentralized identifier.
 
 ### Changed
 - **Notarization Service Refactor**: Streamlined the `createOnChainNotarization` flow to handle metadata construction and on-chain hashing in a single service call.
-- **Workflow Optimization**: Refactored the finalization process to ensure that once a certificate is notarized, the association between the Venue DID and the IPFS CID is permanently stored.
 
 ### Security
 - **Server-Side Signing**: Implemented secure transaction signing using the backend's `PRIVATE_KEY` (Ed25519) to automate notarization on behalf of users.
