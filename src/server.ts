@@ -133,6 +133,39 @@ async function getContractUser(userAddress: string) {
     }
 }
 
+app.get('/api/v1/business/profile/:did', async (req: Request, res: Response) => {
+    try {
+        const { did } = req.params;
+
+        const contractData = await getContractUser(did);
+
+        if (!contractData.registered) {
+            return res.status(404).json({ error: "User not registered on-chain" });
+        }
+
+        // 3. Ritorna il profilo unificato
+        return res.json({
+            success: true,
+            venue: {
+                name: contractData.name,
+                role: contractData.role,
+
+                ...(contractData.business_info && { 
+                    address: contractData.business_info.address, 
+                    vat: contractData.business_info.vat_number 
+                }),
+                ...(contractData.technician_info && { 
+                    license: contractData.technician_info.license_number,
+                    specialization: contractData.technician_info.specialization 
+                })
+            },
+        });
+
+    } catch (error) {
+        console.error("Profile Fetch Error:", error);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+});
 
 app.post('/auth/verify', async (req: Request, res: Response) => {
     const { address, signature } = req.body;

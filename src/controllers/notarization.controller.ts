@@ -99,22 +99,22 @@ export class NotarizationController {
         }
     }
     async finalizeNotarization(req: Request, res: Response) {
-    try {
-        const { objectId, activityDid } = req.body;
+        try {
+            const { objectId, activityDid } = req.body;
 
-        if (!objectId || !activityDid) {
-            return res.status(400).json({ error: 'Missing objectId or activityDid' });
+            if (!objectId || !activityDid) {
+                return res.status(400).json({ error: 'Missing objectId or activityDid' });
+            }
+
+
+            await IdentityService.saveRecord(objectId, activityDid);
+
+            console.log(`[Controller] Record ${objectId} successfully linked to ${activityDid}`);
+            
+            res.status(200).json({ success: true, message: 'Record indexed on Pinata' });
+        } catch (error: any) {
+            console.error('[Controller] Finalize error:', error);
+            res.status(500).json({ error: error.message || 'Internal Server Error' });
         }
-
-
-        await IdentityService.saveRecord(objectId, activityDid);
-
-        console.log(`[Controller] Record ${objectId} successfully linked to ${activityDid}`);
-        
-        res.status(200).json({ success: true, message: 'Record indexed on Pinata' });
-    } catch (error: any) {
-        console.error('[Controller] Finalize error:', error);
-        res.status(500).json({ error: error.message || 'Internal Server Error' });
     }
-}
 }
