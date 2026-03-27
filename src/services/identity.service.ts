@@ -35,6 +35,16 @@ export class IdentityService {
     }
 
     /**
+     * Ensures consistent DID format (did:iota:0x...)
+     */
+    static normalizeDid(did: string): string {
+        if (!did) return did;
+        // If it's just an address, prepend did:iota:
+        if (did.startsWith('0x')) return `did:iota:${did}`;
+        return did;
+    }
+
+    /**
      * Retrieves user data directly from the blockchain (LocalRegistry).
      */
     static async getContractUser(userAddress: string) {
@@ -125,23 +135,31 @@ export class IdentityService {
     /**
      * Saves ONLY the objectId associated with the DIDs.
      * This keeps the Pinata JSON small and privacy-focused.
+     * Indexes for both the subject (activity) and the uploader (technician).
      */
     static async saveRecord(
         objectId: string, 
-        activityDid: string
+        activityDid: string,
+        uploaderDid?: string
     ): Promise<void> {
         const db = await this.getRemoteDb() as Record<string, string[]>;
 
-        if (activityDid) {
-            if (!db[activityDid]) db[activityDid] = [];
-            
-            if (!db[activityDid].includes(objectId)) {
-                db[activityDid].push(objectId);
-                
-                await StorageService.storeRegistry(db);
-                console.log(`[Registry] Linked ${objectId} to Business ${activityDid}. Technician excluded from index.`);
+        const linkToDid = async (did: string) => {
+            if (!did) return;
+            const normalized = this.normalizeDid(did);
+            if (!db[normalized]) db[normalized] = [];
+            if (!db[normalized].includes(objectId)) {
+                db[normalized].push(objectId);
+                console.log(`[Registry] Linked ${objectId} to ${normalized}`);
             }
+        };
+
+        await linkToDid(activityDid);
+        if (uploaderDid) {
+            await linkToDid(uploaderDid);
         }
+        
+        await StorageService.storeRegistry(db);
     }
     
 
@@ -154,7 +172,8 @@ export class IdentityService {
             return [...new Set(allIds)];
         }
 
-        return db[did] ?? [];
+        const normalized = this.normalizeDid(did);
+        return db[normalized] ?? [];
     }
 
     /**
