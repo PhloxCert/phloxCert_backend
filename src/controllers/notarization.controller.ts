@@ -14,26 +14,45 @@ export class NotarizationController {
     async notarizeUpload(req: Request, res: Response) {
         try {
             const file = (req as any).file;
-            const { fileName, expirationDate, activityDid, issuedBy, technicianAddress, publicKey } = req.body;
+            const { fileName, expirationDate, activityDid, uploaderDid, issuedBy, technicianAddress, publicKey } = req.body;
 
-            if (!file || !technicianAddress) {
-                return res.status(400).json({ error: 'File and technicianAddress are required' });
+            if (!file) {
+                return res.status(400).json({ error: 'File is required' });
             }
 
-            const result = await this.notarizationService.prepareNotarizationTransaction(
+            // Case A: Technician flow (Preparation for wallet signing)
+            if (technicianAddress) {
+                const result = await this.notarizationService.prepareNotarizationTransaction(
+                    file.buffer,
+                    fileName,
+                    {
+                        fileName,
+                        expirationDate,
+                        activityDid,
+                        uploaderDid,
+                        issuedBy,
+                        technicianAddress,
+                        publicKey
+                    }
+                );
+                return res.status(200).json(result);
+            }
+
+            // Case B: Business flow (Direct notarization with backend signer)
+            // Ensure uploaderDid is present (it's the business itself)
+            const result = await this.notarizationService.createOnChainNotarization(
                 file.buffer,
                 fileName,
                 {
                     fileName,
                     expirationDate,
                     activityDid,
-                    issuedBy,
-                    technicianAddress,
-                    publicKey
+                    uploaderDid: uploaderDid || activityDid, // Fallback to activity if uploader not sent
+                    issuedBy
                 }
             );
 
-            // Return the bytes to the frontend
+            // Return the results
             res.status(200).json(result);
         } catch (error: any) {
             res.status(500).json({ error: error.message });
@@ -100,14 +119,14 @@ export class NotarizationController {
     }
     async finalizeNotarization(req: Request, res: Response) {
         try {
-            const { objectId, activityDid } = req.body;
+            const { objectId, activityDid, uploaderDid } = req.body;
 
             if (!objectId || !activityDid) {
                 return res.status(400).json({ error: 'Missing objectId or activityDid' });
             }
 
 
-            await IdentityService.saveRecord(objectId, activityDid);
+            await IdentityService.saveRecord(objectId, activityDid, uploaderDid);
 
             console.log(`[Controller] Record ${objectId} successfully linked to ${activityDid}`);
             
