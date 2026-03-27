@@ -82,11 +82,14 @@ export class NotarizationService {
 
         const offchainUrl = await StorageService.storeFile(fileBuffer, fileName);
 
+        const normalizedActivityDid = IdentityService.normalizeDid(metadata.activityDid);
+        const normalizedUploaderDid = IdentityService.normalizeDid(metadata.uploaderDid || metadata.issuedBy);
+
         // 1. The ON-CHAIN metadata remains complete (contains issuedBy for audit)
         const metadataString = JSON.stringify({
-            name: metadata.fileName,
-            activityDid: metadata.activityDid,
-            uploaderDid: metadata.uploaderDid,
+            name: metadata.fileName || fileName,
+            activityDid: normalizedActivityDid,
+            uploaderDid: normalizedUploaderDid,
             issuedBy: metadata.issuedBy, 
             expirationDate: metadata.expirationDate,
             offchainUrl,
@@ -123,7 +126,8 @@ export class NotarizationService {
 
         await IdentityService.saveRecord(
             objectId, 
-            metadata.activityDid
+            normalizedActivityDid,
+            normalizedUploaderDid
         );
 
         return { digest: result.digest, objectId, offchainUrl };
@@ -211,9 +215,13 @@ export class NotarizationService {
         const fileHashUint8 = Array.from(Buffer.from(fileHashHex, 'hex'));
         const offchainUrl = await StorageService.storeFile(fileBuffer, fileName);
 
+        const normalizedActivityDid = IdentityService.normalizeDid(metadata.activityDid);
+        const normalizedUploaderDid = IdentityService.normalizeDid(metadata.uploaderDid || metadata.issuedBy);
+
         const metadataString = JSON.stringify({
             name: fileName,
-            activityDid: metadata.activityDid,
+            activityDid: normalizedActivityDid,
+            uploaderDid: normalizedUploaderDid,
             issuedBy: metadata.issuedBy,
             expirationDate: metadata.expirationDate,
             offchainUrl,
