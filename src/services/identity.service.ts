@@ -1,58 +1,110 @@
 import { Resolver, CoreDocument } from '@iota/identity-wasm/node';
 import { IotaClient } from '@iota/iota-sdk/client';
-import fs from 'fs';
-import path from 'path';
+import { BcsReader } from '@iota/bcs';
+import { StorageService } from './storage.service.js';
+import { IotaService } from './iota.service.js';
+import { Transaction } from '@iota/iota-sdk/transactions';
+import type { NotarizationService } from './notarization.service.js';
 
 export interface NotarizationRecord {
     objectId: string;
-    status: 'pending' | 'certified' | 'rejected'; 
-    vcJwt?: string;                                
-    certifiedBy?: string;                          
-    certifiedAt?: string;  
+    createdAt: string;
     metadata: {
         name: string;
-        fileName: string;
+        offchainUrl: string;
         expirationDate: string;
         activityDid: string;
+        issuedBy: string;
         uploaderDid: string;
-        offchainUrl: string;
-        localName?: string;
     };
-    createdAt: string;
 }
+
 
 export class IdentityService {
     private resolver: Resolver<CoreDocument> | null = null;
-    private static dbPath = path.join(process.cwd(), 'uploads', 'records.json');
+    
+    private static PACKAGE_ID = process.env.PACKAGE_ID;
+    private static REGISTRY_ID = process.env.REGISTRY_ID;
 
-    private static ensureDb() {
-        const dir = path.dirname(this.dbPath);
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
-        if (!fs.existsSync(this.dbPath)) {
-            fs.writeFileSync(this.dbPath, JSON.stringify({}));
-        }
+    constructor(private client: IotaClient) {}
+
+    private static readMoveString(reader: BcsReader): string {
+        const length = reader.readULEB();
+        const bytes = reader.readBytes(length);
+        return new TextDecoder().decode(bytes);
     }
 
-    private static readDb(): Record<string, NotarizationRecord[]> {
-        this.ensureDb();
+    /**
+     * Retrieves user data directly from the blockchain (LocalRegistry).
+     */
+    static async getContractUser(userAddress: string) {
         try {
-            const data = fs.readFileSync(this.dbPath, 'utf8');
-            return JSON.parse(data);
+            if (!this.PACKAGE_ID || !this.REGISTRY_ID) {
+                throw new Error("Missing PACKAGE_ID or REGISTRY_ID in environment");
+            }
+
+            const client = IotaService.getClient();
+            const txb = new Transaction();
+            txb.moveCall({
+                target: `${this.PACKAGE_ID}::LocalRegistry::get_user_data`,
+                arguments: [
+                    txb.object(this.REGISTRY_ID!),
+                    txb.pure.address(userAddress),
+                ],
+            });
+
+            const result = await client.devInspectTransactionBlock({
+                sender: userAddress,
+                transactionBlock: txb,
+            });
+
+            if (result.results?.[0]?.returnValues?.[0]) {
+                const bytes = Uint8Array.from(result.results[0].returnValues[0][0]);
+                const reader = new BcsReader(bytes);
+
+                const role = reader.read8();
+                const name = this.readMoveString(reader);
+
+                let business_info = null;
+                let technician_info = null;
+
+                // Index 1: Business data (Option<BusinessData>)
+                const hasBusiness = reader.read8() === 1;
+                if (hasBusiness) {
+                    business_info = {
+                        address: this.readMoveString(reader),
+                        vat_number: this.readMoveString(reader),
+                    };
+                }
+
+                // Index 2: Technician data (Option<TechnicianData>)
+                const hasTechnician = reader.read8() === 1;
+                if (hasTechnician) {
+                    technician_info = {
+                        license_number: this.readMoveString(reader),
+                        specialization: this.readMoveString(reader),
+                    };
+                }
+
+                return {
+                    registered: true,
+                    role,
+                    name,
+                    business_info,
+                    technician_info
+                };
+            }
+
+            return { registered: false, role: 0 };
         } catch (e) {
-            console.error('[IdentityService] DB read error:', e);
-            return {};
+            console.error("[IdentityService] Blockchain lookup error:", e);
+            return { registered: false, role: 0 };
         }
     }
 
-    private static writeDb(data: Record<string, NotarizationRecord[]>) {
-        this.ensureDb();
-        fs.writeFileSync(this.dbPath, JSON.stringify(data, null, 2));
-    }
-
-    constructor(private client: IotaClient) { }
-
+    /**
+     * Lazy-initializes the DID Resolver.
+     */
     getResolver(): Resolver<CoreDocument> {
         if (!this.resolver) {
             this.resolver = new Resolver({} as any);
@@ -60,98 +112,84 @@ export class IdentityService {
         return this.resolver;
     }
 
-    async resolveDid(did: string) {
-        const resolver = this.getResolver();
-        return await resolver.resolve(did);
+    // ─── Record management (Lightweight IPFS Registry) ────────────────────────
+
+    /**
+     * Fetches the light database from Pinata (Map of DID to Object IDs).
+     */
+    private static async getRemoteDb(): Promise<Record<string, string[]>> {
+        const db = await StorageService.getLatestRegistry();
+        return (db as unknown) as Record<string, string[]>;
     }
 
     /**
-     * Centralized indexing for notarization records.
-     * Records are indexed for both uploader and activity DIDs.
+     * Saves ONLY the objectId associated with the DIDs.
+     * This keeps the Pinata JSON small and privacy-focused.
      */
-    static saveRecord(objectId: string, metadata: NotarizationRecord['metadata']) {
-        const record: NotarizationRecord = {
-            objectId,
-            status: 'pending',
-            metadata,
-            createdAt: new Date().toISOString(),
-        };
+    static async saveRecord(
+        objectId: string, 
+        activityDid: string
+    ): Promise<void> {
+        const db = await this.getRemoteDb() as Record<string, string[]>;
 
-        const db = this.readDb();
-        
-        // Index under activity
-        const activityDid = metadata.activityDid;
-        const activityRecords = db[activityDid] ?? [];
-        if (!activityRecords.find(r => r.objectId === objectId)) {
-            db[activityDid] = [...activityRecords, record];
-        }
-
-        // Index under uploader (if different)
-        const uploaderDid = metadata.uploaderDid;
-        if (uploaderDid && uploaderDid !== activityDid) {
-            const uploaderRecords = db[uploaderDid] ?? [];
-            if (!uploaderRecords.find(r => r.objectId === objectId)) {
-                db[uploaderDid] = [...uploaderRecords, record];
+        if (activityDid) {
+            if (!db[activityDid]) db[activityDid] = [];
+            
+            if (!db[activityDid].includes(objectId)) {
+                db[activityDid].push(objectId);
+                
+                await StorageService.storeRegistry(db);
+                console.log(`[Registry] Linked ${objectId} to Business ${activityDid}. Technician excluded from index.`);
             }
         }
-
-        this.writeDb(db);
-        console.log(`[IdentityService] Indexed record ${objectId} for Activity: ${activityDid}, Uploader: ${uploaderDid}`);
     }
+    
 
-    static getRecords(did: string): NotarizationRecord[] {
-        const db = this.readDb();
+    static async getObjectIdsByDid(did: string): Promise<string[]> {
+        const db = await this.getRemoteDb();
+
+        if (did === 'all') {
+            const allIds = Object.values(db).flat();
+            
+            return [...new Set(allIds)];
+        }
+
         return db[did] ?? [];
     }
-    // Aggiorna status e VC di un record esistente
-    static certifyRecord(objectId: string, technicianDid: string, vcJwt: string) {
-        const db = this.readDb();
-        
-        // Aggiorna in tutti gli indici dove compare questo objectId
-        for (const key of Object.keys(db)) {
-            const arr = db[key];
-            if (!Array.isArray(arr)) continue;  // skip se non è un array
-            db[key] = arr.map(r => {
-                if (r.objectId === objectId) {
-                    return {
-                        ...r,
-                        status: 'certified',
-                        vcJwt,
-                        certifiedBy: technicianDid,
-                        certifiedAt: new Date().toISOString()
-                    };
-                }
-                return r;
-            });
-        }
-        
-        this.writeDb(db);
-        }
 
-    // Recupera tutti i record pending (per la dashboard technician)
-    static getPendingRecords(): NotarizationRecord[] {
-        const db = this.readDb();
-        const seen = new Set<string>();
-        const pending: NotarizationRecord[] = [];
-        
-        for (const records of Object.values(db)) {
-            for (const r of records) {
-                if (r.status === 'pending' && !seen.has(r.objectId)) {
-                    seen.add(r.objectId);
-                    pending.push(r);
+    /**
+     * Retrieves the IDs from Pinata, then FETCHES full data from IOTA blockchain.
+     * This is the bridge between your "Light Index" and the "Source of Truth".
+     */
+    static async getRecords(did: string, notarizationService: NotarizationService): Promise<NotarizationRecord[]> {
+        const ids = await this.getObjectIdsByDid(did);
+
+        // Fetch the actual data for each ID from the blockchain in parallel
+        const results = await Promise.all(
+            ids.map(async (id) => {
+                try {
+                    return await notarizationService.getNotarization(id);
+                } catch (e) {
+                    console.error(`[IdentityService] Failed to fetch ${id} from chain:`, e);
+                    return null;
                 }
-            }
-        }
-        return pending;
+            })
+        );
+
+        // Filter out any objects that might have been deleted or failed to fetch
+        return results.filter((r: any) => r !== null);
     }
 
-    // Recupera un singolo record per objectId
-    static getRecordById(objectId: string): NotarizationRecord | null {
-        const db = this.readDb();
-        for (const records of Object.values(db)) {
-            const found = records.find(r => r.objectId === objectId);
-            if (found) return found;
-        }
-        return null;
+    static async certifyRecord(
+        objectId: string,
+        technicianDid: string,
+        vcObjectId: string
+    ): Promise<void> {
+        const db = await this.getRemoteDb() as any;
+        if (!db._vcMap) db._vcMap = {};
+        db._vcMap[objectId] = vcObjectId;  // ← only the string, nothing else
+        await StorageService.storeRegistry(db);
+        console.log(`[IdentityService] Linked ${vcObjectId} → ${objectId} on Pinata registry.`);
     }
+
 }
