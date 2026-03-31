@@ -39,38 +39,10 @@ npm run dev
 
 The server will start (default `http://localhost:8080`).
 
----
-
-## 📌 API Reference (v1)
-
-### 1. Notarization & Upload
-`POST /api/v1/notarize/upload`
-- **Purpose**: Generates an on-chain notarization and stores the file off-chain.
-- **Body (Multipart)**:
-  - `file`: The document to notarize.
-  - `fileName`: Display name.
-  - `expirationDate`: Timestamp for status tracking.
-  - `activityDid`: The establishment's DID.
-  - `uploaderDid`: The logged-in user's DID (who uploads the document).
-
-### 2. Record Retrieval
-`GET /api/v1/records/:did`
-- **Purpose**: Fetches all records where the provided DID is either the **Activity** or the **Uploader**.
-- **Returns**: Array of `NotarizationRecord` objects with metadata.
-
-### 3. Verification
-`POST /api/v1/verify`
-- **Purpose**: Verifies an off-chain file against its on-chain IOTA hash.
-- **Body (Multipart)**:
-  - `file`: The local file to check.
-  - `objectId`: The IOTA Object ID of the notarization.
-
----
 
 ## 🔑 Security & Configuration
 
-### Obtaining the `PRIVATE_KEY`
-The backend requires a funded IOTA address to pay for notarization gas fees.
+### Obtaining the `PRIVATE_KEY` for the backend
 1. Generate an address: `iota client new-address ed25519`
 2. Get the secret key: `iota client keytool <YOUR_ADDR>`
 3. The format should be a string starting with `iotaprivkey1...`
