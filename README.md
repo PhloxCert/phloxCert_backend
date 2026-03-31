@@ -62,4 +62,3 @@ The backend uses a JSON-based indexing system (located in `.data/`) that mirrors
 ## 📌 Notes
 
 - **Fail-Fast**: The server will not start if `NOTARIZATION_PACKAGE_ID` or `PRIVATE_KEY` are missing.
-- **Storage**: Files are saved in the `uploads/` directory with standardized naming conventions.
